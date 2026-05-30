@@ -265,7 +265,7 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:12px;heigh
         <span class="dop-lbl">DEPTH</span>
         <div class="dop-sep"></div>
         <span class="dop-lbl">smooth</span>
-        <input type="range" id="s-dsmooth" min="0" max="15" value="0" step="1" style="width:80px;flex-shrink:0" oninput="document.getElementById('v-dsmooth').textContent=this.value;applyDepthProcessing()">
+        <input type="range" id="s-dsmooth" min="0" max="15" value="0" step="1" style="width:80px;flex-shrink:0" oninput="document.getElementById('v-dsmooth').textContent=this.value" onchange="applyDepthProcessing()">
         <span class="dop-val" id="v-dsmooth">0</span>
         <div class="dop-sep"></div>
         <button class="dop-btn" id="invertBtn" onclick="toggleDepthInvert()">⇅ invert</button>
@@ -392,6 +392,13 @@ void main(){
   vec2 uvL=clamp(uv+vec2(disp,0.0),vec2(0.001),vec2(0.999));
   vec2 uvR=clamp(uv-vec2(disp,0.0),vec2(0.001),vec2(0.999));
 
+  // Occlusion guard: if displaced sample is significantly behind current fragment,
+  // pull UV back toward origin to avoid stretching background over foreground edges
+  float dL=u_use_ml_depth?texture2D(u_depth_tex,uvL).r:lum(texture2D(u_tex,uvL).rgb);
+  float dR=u_use_ml_depth?texture2D(u_depth_tex,uvR).r:lum(texture2D(u_tex,uvR).rgb);
+  if(dL<rawDepth-0.15)uvL=mix(uv,uvL,0.15);
+  if(dR<rawDepth-0.15)uvR=mix(uv,uvR,0.15);
+
   vec4 leftTex=texture2D(u_tex,uvL);
   vec4 rightTex=texture2D(u_tex,uvR);
 
@@ -452,7 +459,7 @@ void main(){
     float gx=lum(rt)-lum(lt);float gy=lum(t)-lum(bt);
     float edge=sqrt(gx*gx+gy*gy)*2.0;
     float em=max(0.0,(edge-u_ethr)/(1.0-u_ethr))*u_esculpt;
-    outCol+=vec3(em*0.35,em*0.15,em*0.35);
+    outCol+=(outCol-vec3(lum(outCol)))*em*nearness*2.5;
   }
 
   if(u_irid){
@@ -680,22 +687,26 @@ async function estimateDepth(){
 
 // ── Depth processing (smoothing + inversion) ──────────────────────────────────
 
-function boxBlur(src,w,h,r){
-  const tmp=new Uint8Array(src.length);
-  const diam=2*r+1;
-  for(let y=0;y<h;y++){
-    for(let x=0;x<w;x++){
-      let s=0;
-      for(let k=-r;k<=r;k++)s+=src[y*w+Math.max(0,Math.min(w-1,x+k))];
-      tmp[y*w+x]=s/diam;
-    }
-  }
+function bilateralFilter(src,guide,w,h,r){
+  // Edge-aware smoothing: depth values near colour edges are not blended across them
   const out=new Uint8Array(src.length);
+  const sigS=10.0, sigR=25.0;
+  const s2=2*sigS*sigS, r2=2*sigR*sigR;
   for(let y=0;y<h;y++){
     for(let x=0;x<w;x++){
-      let s=0;
-      for(let k=-r;k<=r;k++)s+=tmp[Math.max(0,Math.min(h-1,y+k))*w+x];
-      out[y*w+x]=s/diam;
+      let sumW=0,sumD=0;
+      const gC=guide[y*w+x];
+      for(let ky=-r;ky<=r;ky++){
+        for(let kx=-r;kx<=r;kx++){
+          const nx=Math.max(0,Math.min(w-1,x+kx));
+          const ny=Math.max(0,Math.min(h-1,y+ky));
+          const ni=ny*w+nx;
+          const dR=guide[ni]-gC;
+          const wt=Math.exp(-(kx*kx+ky*ky)/s2-(dR*dR)/r2);
+          sumD+=src[ni]*wt; sumW+=wt;
+        }
+      }
+      out[y*w+x]=sumD/sumW;
     }
   }
   return out;
@@ -703,33 +714,46 @@ function boxBlur(src,w,h,r){
 
 function applyDepthProcessing(){
   if(!mlDepthRaw)return;
-  const {data,w,h}=mlDepthRaw;
-  const r=Math.round(gv('dsmooth'));
-  let processed=new Uint8Array(data);
-  if(mlDepthInverted)for(let i=0;i<processed.length;i++)processed[i]=255-processed[i];
-  if(r>0)processed=boxBlur(processed,w,h,r);
+  setDepthStatus('processing...',true);
+  setTimeout(()=>{
+    const {data,w,h}=mlDepthRaw;
+    const r=Math.round(gv('dsmooth'));
+    let processed=new Uint8Array(data);
+    if(mlDepthInverted)for(let i=0;i<processed.length;i++)processed[i]=255-processed[i];
 
-  const pixels=new Uint8Array(w*h*4);
-  for(let i=0;i<w*h;i++){
-    const v=processed[i];
-    pixels[i*4]=v;pixels[i*4+1]=v;pixels[i*4+2]=v;pixels[i*4+3]=255;
-  }
+    if(r>0){
+      // Build a luminance guide from the source image at depth-map resolution
+      const guideCvs=document.createElement('canvas');
+      guideCvs.width=w;guideCvs.height=h;
+      guideCvs.getContext('2d').drawImage(sourceImage,0,0,w,h);
+      const gd=guideCvs.getContext('2d').getImageData(0,0,w,h).data;
+      const lum=new Uint8Array(w*h);
+      for(let i=0;i<w*h;i++)lum[i]=0.2126*gd[i*4]+0.7152*gd[i*4+1]+0.0722*gd[i*4+2];
+      processed=bilateralFilter(processed,lum,w,h,r);
+    }
 
-  gl.activeTexture(gl.TEXTURE1);
-  gl.bindTexture(gl.TEXTURE_2D,depthTex);
-  gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,w,h,0,gl.RGBA,gl.UNSIGNED_BYTE,pixels);
+    const pixels=new Uint8Array(w*h*4);
+    for(let i=0;i<w*h;i++){
+      const v=processed[i];
+      pixels[i*4]=v;pixels[i*4+1]=v;pixels[i*4+2]=v;pixels[i*4+3]=255;
+    }
 
-  mlDepthCanvas=document.createElement('canvas');
-  mlDepthCanvas.width=w;mlDepthCanvas.height=h;
-  const mctx=mlDepthCanvas.getContext('2d');
-  const imgd=mctx.createImageData(w,h);
-  imgd.data.set(pixels);mctx.putImageData(imgd,0,0);
+    gl.activeTexture(gl.TEXTURE1);
+    gl.bindTexture(gl.TEXTURE_2D,depthTex);
+    gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,w,h,0,gl.RGBA,gl.UNSIGNED_BYTE,pixels);
 
-  mlDepthReady=true;
-  buildDepthThumb();
-  const label=mlDepthInverted?(r>0?'ML ↕ smoothed':'ML ↕'):(r>0?'ML smoothed':'ML depth');
-  setDepthStatus(label,true);
-  schedRender();
+    mlDepthCanvas=document.createElement('canvas');
+    mlDepthCanvas.width=w;mlDepthCanvas.height=h;
+    const mctx=mlDepthCanvas.getContext('2d');
+    const imgd=mctx.createImageData(w,h);
+    imgd.data.set(pixels);mctx.putImageData(imgd,0,0);
+
+    mlDepthReady=true;
+    buildDepthThumb();
+    const label=mlDepthInverted?(r>0?'ML ↕ filtered':'ML ↕'):(r>0?'ML filtered':'ML depth');
+    setDepthStatus(label,true);
+    schedRender();
+  },10);
 }
 
 function toggleDepthInvert(){
