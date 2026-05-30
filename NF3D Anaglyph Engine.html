@@ -1,0 +1,874 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NF3D Anaglyph Engine — WebGL Stereo Engine</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Outfit:wght@300;400;500&display=swap');
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0a0a0c;--s1:#111115;--s2:#18181e;--border:#222228;
+  --accent:#00e5cc;--red:#ff2040;--muted:#55535f;--text:#dddbe6;
+  --font-mono:'Share Tech Mono',monospace;--font-ui:'Outfit',sans-serif;
+}
+body{background:var(--bg);color:var(--text);font-family:var(--font-ui);padding:1.25rem;min-height:100vh}
+.app{display:flex;flex-direction:column;gap:14px;max-width:1100px;margin:0 auto}
+.hdr{display:flex;align-items:center;gap:12px;border-bottom:0.5px solid var(--border);padding-bottom:12px}
+.hdr-title{font-family:var(--font-mono);font-size:16px;letter-spacing:.05em}
+.hdr-tag{font-family:var(--font-mono);font-size:9px;color:#000;background:var(--accent);padding:2px 7px;border-radius:3px;letter-spacing:.06em}
+.hdr-sub{font-family:var(--font-mono);font-size:10px;color:var(--muted);margin-left:auto;letter-spacing:.08em}
+.io-row{display:flex;gap:14px;align-items:stretch;width:100%}
+.logo-box{background:var(--s1);border:0.5px solid var(--border);border-radius:8px;width:130px;display:flex;align-items:center;justify-content:center;padding:10px;flex-shrink:0}
+.logo-box img{max-width:100%;max-height:100%;object-fit:contain;border-radius:4px}
+.drop{border:1.5px dashed var(--border);border-radius:8px;padding:1.25rem;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;cursor:pointer;transition:border-color .2s,background .2s;background:var(--s1);flex:1}
+.drop:hover,.drop.over{border-color:var(--accent);background:#001a18}
+.drop-lbl{font-family:var(--font-mono);font-size:12px;color:var(--muted)}
+input[type=file]{display:none}
+.main{display:grid;grid-template-columns:260px 1fr;gap:14px;align-items:start}
+.sidebar{display:flex;flex-direction:column;gap:6px}
+.layer{background:var(--s1);border:0.5px solid var(--border);border-radius:7px;overflow:hidden;transition:border-color .2s}
+.layer.active{border-color:#00e5cc35}
+.layer-hdr{display:flex;align-items:center;gap:8px;padding:8px 10px;cursor:pointer;user-select:none}
+.tog{width:30px;height:16px;border-radius:8px;border:0.5px solid var(--muted);background:transparent;cursor:pointer;position:relative;transition:background .2s,border-color .2s;flex-shrink:0}
+.tog.on{background:var(--accent);border-color:var(--accent)}
+.tog::after{content:'';position:absolute;top:2px;left:2px;width:10px;height:10px;border-radius:50%;background:var(--muted);transition:transform .2s,background .2s}
+.tog.on::after{transform:translateX(14px);background:#001a14}
+.layer-name{font-family:var(--font-mono);font-size:10px;letter-spacing:.06em;color:var(--muted);flex:1}
+.layer.active .layer-name{color:var(--accent)}
+.layer-body{padding:0 10px 10px;display:flex;flex-direction:column;gap:7px}
+.ctrl{display:flex;flex-direction:column;gap:3px}
+.ctrl-row{display:flex;justify-content:space-between;align-items:center}
+.ctrl-lbl{font-family:var(--font-mono);font-size:9px;color:var(--muted);letter-spacing:.05em}
+.ctrl-val{font-family:var(--font-mono);font-size:10px;color:var(--accent)}
+input[type=range]{width:100%;-webkit-appearance:none;height:2px;border-radius:1px;background:var(--border);outline:none;cursor:pointer}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:12px;height:12px;border-radius:50%;background:var(--accent);cursor:pointer}
+/* mode selector */
+.mode-row{display:flex;gap:4px;margin-top:3px}
+.mbtn{flex:1;background:transparent;border:0.5px solid var(--border);color:var(--muted);font-family:var(--font-mono);font-size:8px;letter-spacing:.03em;padding:4px 2px;border-radius:4px;cursor:pointer;transition:all .15s;text-align:center}
+.mbtn:hover{border-color:var(--muted);color:var(--text)}
+.mbtn.sel{background:#00e5cc15;border-color:var(--accent);color:var(--accent)}
+/* inline toggle row inside layer body */
+.ctrl-tog-row{display:flex;justify-content:space-between;align-items:center;cursor:pointer;user-select:none}
+/* viewport */
+.viewport{display:flex;flex-direction:column;gap:10px}
+.canvas-main{background:#000;border-radius:8px;border:0.5px solid var(--border);overflow:hidden;min-height:300px;display:flex;align-items:center;justify-content:center;position:relative}
+.canvas-main canvas{max-width:100%;max-height:600px;display:none}
+.placeholder{font-family:var(--font-mono);font-size:11px;color:var(--muted);text-align:center;padding:2rem;pointer-events:none}
+.mini-row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.canvas-mini{background:#000;border-radius:7px;border:0.5px solid var(--border);overflow:hidden;position:relative}
+.canvas-mini canvas{width:100%;display:block}
+.canvas-mini-lbl{position:absolute;bottom:5px;left:7px;font-family:var(--font-mono);font-size:8px;color:#ffffff55;letter-spacing:.1em}
+.depth-status{position:absolute;bottom:5px;right:7px;font-family:var(--font-mono);font-size:8px;color:var(--muted);letter-spacing:.05em;text-align:right;max-width:55%}
+.depth-status.ml-ready{color:var(--accent)}
+/* depth ops row */
+.depth-ops{background:var(--s1);border:0.5px solid var(--border);border-radius:7px;padding:8px 10px;display:flex;align-items:center;gap:8px;opacity:.35;pointer-events:none;transition:opacity .2s}
+.depth-ops.active{opacity:1;pointer-events:all}
+.dop-lbl{font-family:var(--font-mono);font-size:9px;color:var(--muted);letter-spacing:.05em;white-space:nowrap}
+.dop-val{font-family:var(--font-mono);font-size:9px;color:var(--accent);min-width:18px;text-align:right}
+.dop-btn{background:transparent;border:0.5px solid var(--border);color:var(--muted);font-family:var(--font-mono);font-size:9px;padding:3px 9px;border-radius:4px;cursor:pointer;transition:all .15s;white-space:nowrap;letter-spacing:.04em}
+.dop-btn:hover{border-color:var(--muted);color:var(--text)}
+.dop-btn.on{border-color:var(--accent);color:var(--accent)}
+.dop-sep{width:0.5px;height:14px;background:var(--border);flex-shrink:0}
+/* buttons + status */
+.btns{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
+.btn{background:transparent;border:0.5px solid var(--border);color:var(--text);font-family:var(--font-mono);font-size:11px;letter-spacing:.05em;padding:9px;border-radius:6px;cursor:pointer;transition:background .15s,border-color .15s;text-align:center}
+.btn:hover:not(:disabled){background:var(--s2);border-color:var(--muted)}
+.btn-go{border-color:var(--accent);color:var(--accent)}
+.btn-go:hover:not(:disabled){background:#00e5cc12}
+.btn-red{border-color:var(--red);color:var(--red)}
+.btn-red:hover:not(:disabled){background:#ff204012}
+.btn:disabled{opacity:.3;cursor:not-allowed}
+.status{font-family:var(--font-mono);font-size:10px;color:var(--muted);text-align:center;padding:3px}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="hdr">
+    <span class="hdr-title">NF3D ANAGLYPH ENGINE</span>
+    <span class="hdr-tag">WEBGL STEREOSCOPY</span>
+    <span class="hdr-sub">asymmetric parallax · convergence matrix · rivalry reduction</span>
+  </div>
+
+  <div class="io-row">
+    <div class="logo-box"><img src="nf3d_log.png" alt="NF3D Logo"></div>
+    <div class="drop" id="drop">
+      <svg width="38" height="38" viewBox="0 0 38 38" fill="none"><rect x="3" y="7" width="32" height="24" rx="3" stroke="#55535f" stroke-width="1.2"/><circle cx="13" cy="16" r="3.5" stroke="#55535f" stroke-width="1.2"/><path d="M3 25 L12 17 L20 25 L25 20 L35 27" stroke="#55535f" stroke-width="1.2" stroke-linejoin="round"/></svg>
+      <span class="drop-lbl">drop image or click to open · JPG · PNG · WEBP</span>
+      <input type="file" id="fi" accept="image/*">
+    </div>
+  </div>
+
+  <div class="main">
+    <div class="sidebar">
+
+      <!-- PARALLAX ENGINE -->
+      <div class="layer active" id="l-disp">
+        <div class="layer-hdr" onclick="toggleLayer('disp')">
+          <div class="tog on" id="t-disp"></div>
+          <span class="layer-name">PARALLAX ENGINE</span>
+        </div>
+        <div class="layer-body">
+          <div class="ctrl">
+            <div class="ctrl-row"><span class="ctrl-lbl">baseline separation</span><span class="ctrl-val" id="v-shift">15px</span></div>
+            <input type="range" id="s-shift" min="0" max="60" value="15" step="1" oninput="slv(this,'shift','px');schedRender()">
+          </div>
+          <div class="ctrl">
+            <div class="ctrl-row"><span class="ctrl-lbl">convergence plane</span><span class="ctrl-val" id="v-converge">0.40</span></div>
+            <input type="range" id="s-converge" min="0" max="1" value="0.40" step="0.01" oninput="slv(this,'converge','');schedRender()">
+          </div>
+          <div class="ctrl">
+            <div class="ctrl-row"><span class="ctrl-lbl">near-field boost</span><span class="ctrl-val" id="v-nfb">0.5</span></div>
+            <input type="range" id="s-nfb" min="0" max="1" value="0.5" step="0.05" oninput="slv(this,'nfb','');schedRender()">
+          </div>
+          <div class="ctrl">
+            <div class="ctrl-row"><span class="ctrl-lbl">mid-plane bridge</span><span class="ctrl-val" id="v-mid">0.5</span></div>
+            <input type="range" id="s-mid" min="0" max="1" value="0.5" step="0.05" oninput="slv(this,'mid','');rebuildDepthProxy()">
+          </div>
+          <div class="ctrl">
+            <div class="ctrl-row"><span class="ctrl-lbl">max disparity</span><span class="ctrl-val" id="v-maxdisp">40px</span></div>
+            <input type="range" id="s-maxdisp" min="5" max="200" value="40" step="1" oninput="slv(this,'maxdisp','px');schedRender()">
+          </div>
+          <div class="ctrl">
+            <div class="ctrl-tog-row" onclick="toggleFloatWin()">
+              <span class="ctrl-lbl">floating window</span>
+              <div class="tog" id="t-fwin"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- DUBOIS & SPECTRAL -->
+      <div class="layer active" id="l-dubois">
+        <div class="layer-hdr" onclick="toggleLayer('dubois')">
+          <div class="tog on" id="t-dubois"></div>
+          <span class="layer-name">DUBOIS & SPECTRAL</span>
+        </div>
+        <div class="layer-body">
+          <div class="ctrl">
+            <span class="ctrl-lbl">anaglyph mode</span>
+            <div class="mode-row">
+              <button class="mbtn sel" id="mb-1" onclick="setMode(1)">RC DUBOIS</button>
+              <button class="mbtn" id="mb-2" onclick="setMode(2)">AMBER-BLUE</button>
+              <button class="mbtn" id="mb-3" onclick="setMode(3)">HALF-COL</button>
+            </div>
+          </div>
+          <div class="ctrl">
+            <div class="ctrl-row"><span class="ctrl-lbl">rivalry dampener</span><span class="ctrl-val" id="v-rivalry">30%</span></div>
+            <input type="range" id="s-rivalry" min="0" max="100" value="30" step="5" oninput="slv(this,'rivalry','%');schedRender()">
+          </div>
+          <div class="ctrl">
+            <div class="ctrl-row"><span class="ctrl-lbl">ghost reduction</span><span class="ctrl-val" id="v-ghost">70%</span></div>
+            <input type="range" id="s-ghost" min="0" max="100" value="70" step="1" oninput="slv(this,'ghost','%');schedRender()">
+          </div>
+          <div class="ctrl">
+            <div class="ctrl-row"><span class="ctrl-lbl">magenta–teal bias</span><span class="ctrl-val" id="v-mtb">40%</span></div>
+            <input type="range" id="s-mtb" min="0" max="100" value="40" step="1" oninput="slv(this,'mtb','%');schedRender()">
+          </div>
+          <div class="ctrl">
+            <div class="ctrl-row"><span class="ctrl-lbl">red balance</span><span class="ctrl-val" id="v-srcred">0%</span></div>
+            <input type="range" id="s-srcred" min="-40" max="40" value="0" step="5" oninput="slvSigned(this,'srcred','%');schedRender()">
+          </div>
+        </div>
+      </div>
+
+      <!-- FAR-FIELD RECESSION -->
+      <div class="layer" id="l-far">
+        <div class="layer-hdr" onclick="toggleLayer('far')">
+          <div class="tog" id="t-far"></div>
+          <span class="layer-name">FAR-FIELD RECESSION</span>
+        </div>
+        <div class="layer-body">
+          <div class="ctrl">
+            <div class="ctrl-row"><span class="ctrl-lbl">attenuation curve</span><span class="ctrl-val" id="v-fara">0.4</span></div>
+            <input type="range" id="s-fara" min="0" max="1" value="0.4" step="0.05" oninput="slv(this,'fara','');schedRender()">
+          </div>
+          <div class="ctrl">
+            <div class="ctrl-row"><span class="ctrl-lbl">depth haze</span><span class="ctrl-val" id="v-haze">30%</span></div>
+            <input type="range" id="s-haze" min="0" max="100" value="30" step="1" oninput="slv(this,'haze','%');schedRender()">
+          </div>
+        </div>
+      </div>
+
+      <!-- EDGE SCULPTING -->
+      <div class="layer" id="l-edge">
+        <div class="layer-hdr" onclick="toggleLayer('edge')">
+          <div class="tog" id="t-edge"></div>
+          <span class="layer-name">EDGE SCULPTING</span>
+        </div>
+        <div class="layer-body">
+          <div class="ctrl">
+            <div class="ctrl-row"><span class="ctrl-lbl">emissive strength</span><span class="ctrl-val" id="v-esculpt">30%</span></div>
+            <input type="range" id="s-esculpt" min="0" max="100" value="30" step="1" oninput="slv(this,'esculpt','%');schedRender()">
+          </div>
+          <div class="ctrl">
+            <div class="ctrl-row"><span class="ctrl-lbl">edge threshold</span><span class="ctrl-val" id="v-ethr">40%</span></div>
+            <input type="range" id="s-ethr" min="5" max="95" value="40" step="1" oninput="slv(this,'ethr','%');schedRender()">
+          </div>
+        </div>
+      </div>
+
+      <!-- IRIDESCENCE NOISE -->
+      <div class="layer" id="l-irid">
+        <div class="layer-hdr" onclick="toggleLayer('irid')">
+          <div class="tog" id="t-irid"></div>
+          <span class="layer-name">IRIDESCENCE NOISE</span>
+        </div>
+        <div class="layer-body">
+          <div class="ctrl">
+            <div class="ctrl-row"><span class="ctrl-lbl">intensity</span><span class="ctrl-val" id="v-irint">25%</span></div>
+            <input type="range" id="s-irint" min="0" max="100" value="25" step="1" oninput="slv(this,'irint','%');schedRender()">
+          </div>
+          <div class="ctrl">
+            <div class="ctrl-row"><span class="ctrl-lbl">scale</span><span class="ctrl-val" id="v-irsc">3.0</span></div>
+            <input type="range" id="s-irsc" min="0.5" max="12" value="3" step="0.5" oninput="slv(this,'irsc','');schedRender()">
+          </div>
+        </div>
+      </div>
+
+      <!-- TEMPORAL PULSE -->
+      <div class="layer" id="l-temp">
+        <div class="layer-hdr" onclick="toggleLayer('temp')">
+          <div class="tog" id="t-temp"></div>
+          <span class="layer-name">TEMPORAL PULSE</span>
+        </div>
+        <div class="layer-body">
+          <div class="ctrl">
+            <div class="ctrl-row"><span class="ctrl-lbl">pulse depth</span><span class="ctrl-val" id="v-pdep">15%</span></div>
+            <input type="range" id="s-pdep" min="0" max="50" value="15" step="1" oninput="slv(this,'pdep','%');schedRender()">
+          </div>
+          <div class="ctrl">
+            <div class="ctrl-row"><span class="ctrl-lbl">frequency</span><span class="ctrl-val" id="v-pfrq">0.6Hz</span></div>
+            <input type="range" id="s-pfrq" min="1" max="20" value="6" step="1" oninput="slv(this,'pfrq','Hz',0.1);schedRender()">
+          </div>
+        </div>
+      </div>
+
+    </div><div class="viewport">
+      <div class="canvas-main" id="viewport">
+        <div class="placeholder" id="placeholder">no image loaded<br><span style="opacity:.5;font-size:9px">drop or click the zone above</span></div>
+        <canvas id="glCanvas"></canvas>
+      </div>
+      <div class="mini-row">
+        <div class="canvas-mini">
+          <canvas id="srcThumb"></canvas>
+          <span class="canvas-mini-lbl">source</span>
+        </div>
+        <div class="canvas-mini">
+          <canvas id="depThumb"></canvas>
+          <span class="canvas-mini-lbl">depth proxy</span>
+          <span class="depth-status" id="depthStatus">luminance</span>
+        </div>
+      </div>
+      <!-- depth processing controls — active only when ML depth is loaded -->
+      <div class="depth-ops" id="depthOps">
+        <span class="dop-lbl">DEPTH</span>
+        <div class="dop-sep"></div>
+        <span class="dop-lbl">smooth</span>
+        <input type="range" id="s-dsmooth" min="0" max="15" value="0" step="1" style="width:80px;flex-shrink:0" oninput="document.getElementById('v-dsmooth').textContent=this.value;applyDepthProcessing()">
+        <span class="dop-val" id="v-dsmooth">0</span>
+        <div class="dop-sep"></div>
+        <button class="dop-btn" id="invertBtn" onclick="toggleDepthInvert()">⇅ invert</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="btns">
+    <button class="btn" id="resetBtn" onclick="resetAll()" disabled>↺ reset</button>
+    <button class="btn" id="animBtn" onclick="toggleAnim()" disabled>▶ start pulse</button>
+    <button class="btn btn-go" id="saveBtn" onclick="saveImg()" disabled>↓ save PNG</button>
+  </div>
+  <div class="status" id="status">open an image to begin</div>
+</div>
+
+<script>
+const drop=document.getElementById('drop'),fi=document.getElementById('fi');
+const glCanvas=document.getElementById('glCanvas');
+const srcThumb=document.getElementById('srcThumb');
+const depThumb=document.getElementById('depThumb');
+const statusEl=document.getElementById('status');
+const animBtn=document.getElementById('animBtn');
+const depthStatusEl=document.getElementById('depthStatus');
+const depthOpsEl=document.getElementById('depthOps');
+
+const gl=glCanvas.getContext('webgl',{preserveDrawingBuffer:true,antialias:false});
+if(!gl)alert('WebGL not supported in this browser.');
+
+const layers={disp:true,dubois:true,far:false,edge:false,irid:false,temp:false};
+let sourceImage=null,rafId=null,animRunning=false,startTime=null;
+let loadedFileName='image.png';
+let mlDepthReady=false,mlDepthCanvas=null;
+let mlDepthRaw=null; // {data:Uint8Array, w, h}
+let mlDepthInverted=false;
+let depthPipe=null,depthPipeLoading=false;
+let anaglyphMode=1; // 1=RC-Dubois, 2=amber-blue, 3=half-colour
+let floatWin=false;
+
+// ── Shaders ───────────────────────────────────────────────────────────────────
+
+const vsrc=`
+attribute vec2 a_pos;
+varying vec2 v_uv;
+void main(){
+  v_uv=vec2(a_pos.x*0.5+0.5,0.5-a_pos.y*0.5);
+  gl_Position=vec4(a_pos,0.0,1.0);
+}`;
+
+const fsrc=`
+precision highp float;
+varying vec2 v_uv;
+uniform sampler2D u_tex;
+uniform sampler2D u_depth_tex;
+uniform bool u_use_ml_depth;
+uniform vec2 u_res;
+uniform float u_time;
+
+uniform float u_shift;
+uniform float u_converge;
+uniform float u_nfb;
+uniform float u_mid;
+uniform float u_max_disp;
+uniform bool u_float_win;
+
+uniform float u_rivalry;
+uniform float u_ghost;
+uniform float u_mtb;
+uniform int u_mode;
+uniform float u_src_red;
+
+uniform bool u_far;
+uniform float u_fara;
+uniform float u_haze;
+uniform bool u_edge;
+uniform float u_esculpt;
+uniform float u_ethr;
+uniform bool u_irid;
+uniform float u_irint;
+uniform float u_irsc;
+uniform bool u_temp;
+uniform float u_pdep;
+uniform float u_pfrq;
+
+float lum(vec3 c){return dot(c,vec3(0.2126,0.7152,0.0722));}
+
+float hash(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
+float noise(vec2 p){
+  vec2 i=floor(p);vec2 f=fract(p);
+  vec2 u=f*f*(3.0-2.0*f);
+  return mix(mix(hash(i),hash(i+vec2(1,0)),u.x),
+             mix(hash(i+vec2(0,1)),hash(i+vec2(1,1)),u.x),u.y);
+}
+
+void main(){
+  vec2 uv=v_uv;
+  vec2 texel=1.0/u_res;
+  vec4 base=texture2D(u_tex,uv);
+
+  float rawDepth=u_use_ml_depth?texture2D(u_depth_tex,uv).r:lum(base.rgb);
+  float pseudoDepth=u_use_ml_depth?rawDepth:mix(rawDepth,uv.y,u_mid);
+  float nearness=pow(smoothstep(0.0,1.0,pseudoDepth),1.0+u_nfb*2.0);
+
+  float margin=0.03;
+  nearness*=smoothstep(0.0,margin,uv.x)*smoothstep(1.0,1.0-margin,uv.x)
+            *smoothstep(0.0,margin,uv.y)*smoothstep(1.0,1.0-margin,uv.y);
+
+  float pulse=1.0;float lphase=1.0;
+  if(u_temp){
+    float ph=u_time*u_pfrq*6.28318;
+    pulse=1.0+sin(ph)*u_pdep;
+    lphase=1.0+sin(ph+1.5708)*u_pdep*0.4;
+  }
+
+  float disp=(nearness-u_converge)*u_shift*texel.x*pulse;
+  if(u_far){
+    float falloff=smoothstep(u_fara*0.5,1.0,1.0-nearness);
+    disp*=(1.0-falloff*0.6);
+  }
+  if(u_max_disp>0.0){
+    float md=u_max_disp*texel.x;
+    disp=clamp(disp,-md,md);
+  }
+
+  vec2 uvL=clamp(uv+vec2(disp,0.0),vec2(0.001),vec2(0.999));
+  vec2 uvR=clamp(uv-vec2(disp,0.0),vec2(0.001),vec2(0.999));
+
+  vec4 leftTex=texture2D(u_tex,uvL);
+  vec4 rightTex=texture2D(u_tex,uvR);
+
+  if(u_far){
+    float hz=(1.0-nearness)*u_haze*0.35;
+    leftTex.rgb=mix(leftTex.rgb,vec3(0.5),hz);
+    rightTex.rgb=mix(rightTex.rgb,vec3(0.5),hz);
+  }
+
+  vec3 lc=leftTex.rgb;
+  vec3 rc=rightTex.rgb;
+
+  // Red balance correction (applied before colour split)
+  lc.r*=u_src_red; rc.r*=u_src_red;
+
+  // Rivalry dampening
+  if(u_rivalry>0.0){
+    lc=mix(lc,vec3(lum(lc)),u_rivalry*0.4);
+    rc=mix(rc,vec3(lum(rc)),u_rivalry*0.4);
+  }
+
+  vec3 outCol;
+  if(u_mode==1){
+    // Red-cyan Dubois
+    float dr= 0.4154*lc.r+0.4710*lc.g+0.1651*lc.b-0.0458*rc.r-0.0484*rc.g-0.0258*rc.b;
+    float dg=-0.0547*lc.r-0.0615*lc.g+0.0100*lc.b+0.3756*rc.r+0.7333*rc.g-0.0111*rc.b;
+    float db=-0.0651*lc.r-0.1286*lc.g+1.2968*lc.b;
+    float cgrey=lum(vec3(0.0,dg,db));
+    dg=mix(cgrey,dg,1.0-u_ghost*0.5);
+    db=mix(cgrey,db,1.0-u_ghost*0.5);
+    float bias=u_mtb;
+    dr+=bias*0.12;dg+=bias*0.08;db+=bias*0.15;
+    outCol=vec3(dr,dg,db);
+  } else if(u_mode==2){
+    // Amber-blue (left through amber=R+G, right through blue=B)
+    outCol=vec3(lc.r,lc.g,rc.b);
+  } else if(u_mode==3){
+    // Half-colour (greyscale left through red, colour right through cyan)
+    outCol=vec3(lum(lc),rc.g,rc.b);
+  } else {
+    // Simple split
+    outCol=vec3(lc.r,rc.g,rc.b);
+  }
+
+  // Floating window: hard per-eye border keyed to current disparity range
+  if(u_float_win){
+    float border=clamp((1.0-u_converge)*u_shift*texel.x,0.0,0.08);
+    float lMask=step(border,uv.x);
+    float rMask=1.0-step(1.0-border,uv.x);
+    outCol=vec3(outCol.r*lMask,outCol.g*rMask,outCol.b*rMask);
+  }
+
+  if(u_edge){
+    vec3 t =texture2D(u_tex,uv+vec2(0.0, texel.y)).rgb;
+    vec3 bt=texture2D(u_tex,uv-vec2(0.0, texel.y)).rgb;
+    vec3 rt=texture2D(u_tex,uv+vec2(texel.x,0.0)).rgb;
+    vec3 lt=texture2D(u_tex,uv-vec2(texel.x,0.0)).rgb;
+    float gx=lum(rt)-lum(lt);float gy=lum(t)-lum(bt);
+    float edge=sqrt(gx*gx+gy*gy)*2.0;
+    float em=max(0.0,(edge-u_ethr)/(1.0-u_ethr))*u_esculpt;
+    outCol+=vec3(em*0.35,em*0.15,em*0.35);
+  }
+
+  if(u_irid){
+    vec2 np=uv*u_irsc+vec2(u_time*0.1,0.0);
+    float n=noise(np*8.0);float hu=n*6.28318+u_time*0.5;
+    vec3 iri=vec3(0.5+0.5*cos(hu),0.5+0.5*cos(hu+2.094),0.5+0.5*cos(hu+4.189));
+    outCol+=iri*u_irint*0.18;
+  }
+
+  if(u_temp){
+    outCol=mix(vec3(lum(outCol)),outCol,lphase);
+  }
+
+  gl_FragColor=vec4(clamp(outCol,0.0,1.0),base.a);
+}`;
+
+// ── WebGL setup ───────────────────────────────────────────────────────────────
+
+function mkShader(type,src){
+  const s=gl.createShader(type);
+  gl.shaderSource(s,src);gl.compileShader(s);
+  if(!gl.getShaderParameter(s,gl.COMPILE_STATUS))
+    console.error('Shader compile error:',gl.getShaderInfoLog(s));
+  return s;
+}
+
+const prog=gl.createProgram();
+gl.attachShader(prog,mkShader(gl.VERTEX_SHADER,vsrc));
+gl.attachShader(prog,mkShader(gl.FRAGMENT_SHADER,fsrc));
+gl.linkProgram(prog);
+if(!gl.getProgramParameter(prog,gl.LINK_STATUS)){
+  console.error('Shader link error:',gl.getProgramInfoLog(prog));
+  alert('WebGL shader error — see browser console.');
+}
+
+const posLoc=gl.getAttribLocation(prog,'a_pos');
+const buf=gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER,buf);
+gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-1,-1,1,-1,-1,1,-1,1,1,-1,1,1]),gl.STATIC_DRAW);
+
+const U={};
+['u_tex','u_depth_tex','u_use_ml_depth',
+ 'u_res','u_time','u_shift','u_converge','u_nfb','u_mid','u_max_disp','u_float_win',
+ 'u_rivalry','u_ghost','u_mtb','u_mode','u_src_red',
+ 'u_far','u_fara','u_haze','u_edge','u_esculpt','u_ethr',
+ 'u_irid','u_irint','u_irsc','u_temp','u_pdep','u_pfrq'].forEach(n=>{
+  U[n]=gl.getUniformLocation(prog,n);
+});
+
+function mkTex(){
+  const t=gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D,t);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);
+  return t;
+}
+const tex=mkTex();       // unit 0 — source image
+const depthTex=mkTex();  // unit 1 — ML depth map
+
+// ── UI helpers ────────────────────────────────────────────────────────────────
+
+function slv(el,id,unit,mult){
+  const v=parseFloat(el.value);
+  document.getElementById('v-'+id).textContent=mult?(v*mult).toFixed(1)+unit:v+unit;
+}
+function slvSigned(el,id,unit){
+  const v=parseFloat(el.value);
+  document.getElementById('v-'+id).textContent=(v>0?'+':'')+v+unit;
+}
+function gv(id){return parseFloat(document.getElementById('s-'+id).value);}
+
+function toggleLayer(id){
+  layers[id]=!layers[id];
+  document.getElementById('t-'+id).classList.toggle('on',layers[id]);
+  document.getElementById('l-'+id).classList.toggle('active',layers[id]);
+  schedRender();
+}
+function toggleFloatWin(){
+  floatWin=!floatWin;
+  document.getElementById('t-fwin').classList.toggle('on',floatWin);
+  schedRender();
+}
+function setMode(m){
+  anaglyphMode=m;
+  [1,2,3].forEach(i=>document.getElementById('mb-'+i).classList.toggle('sel',i===m));
+  schedRender();
+}
+function setDepthStatus(msg,ready){
+  depthStatusEl.textContent=msg;
+  depthStatusEl.classList.toggle('ml-ready',!!ready);
+}
+function setDepthOpsActive(on){
+  depthOpsEl.classList.toggle('active',on);
+}
+
+// ── File loading ──────────────────────────────────────────────────────────────
+
+drop.addEventListener('click',()=>fi.click());
+drop.addEventListener('dragover',e=>{e.preventDefault();drop.classList.add('over')});
+drop.addEventListener('dragleave',()=>drop.classList.remove('over'));
+drop.addEventListener('drop',e=>{
+  e.preventDefault();drop.classList.remove('over');
+  const f=e.dataTransfer.files[0];
+  if(f&&f.type.startsWith('image/'))load(f);
+});
+fi.addEventListener('change',e=>{if(e.target.files[0])load(e.target.files[0])});
+
+function load(file){
+  const maxTex=gl.getParameter(gl.MAX_TEXTURE_SIZE);
+  const url=URL.createObjectURL(file);
+  loadedFileName=file.name;
+  const image=new Image();
+  image.onload=()=>{
+    URL.revokeObjectURL(url);
+    if(image.width>maxTex||image.height>maxTex){
+      alert(`Image too large (${image.width}×${image.height}). Max on this device: ${maxTex}×${maxTex} px.`);
+      return;
+    }
+    sourceImage=image;
+    mlDepthReady=false;mlDepthCanvas=null;mlDepthRaw=null;mlDepthInverted=false;
+    document.getElementById('invertBtn').classList.remove('on');
+    document.getElementById('s-dsmooth').value=0;
+    document.getElementById('v-dsmooth').textContent='0';
+    setDepthStatus('luminance');
+    setDepthOpsActive(false);
+
+    glCanvas.width=image.width;glCanvas.height=image.height;
+    gl.viewport(0,0,image.width,image.height);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D,tex);
+    gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE,image);
+
+    srcThumb.width=320;srcThumb.height=Math.round(320*(image.height/image.width));
+    depThumb.width=320;depThumb.height=srcThumb.height;
+    srcThumb.getContext('2d').drawImage(image,0,0,srcThumb.width,srcThumb.height);
+    buildDepthThumb();
+
+    document.getElementById('placeholder').style.display='none';
+    glCanvas.style.display='block';
+    document.getElementById('saveBtn').disabled=false;
+    document.getElementById('resetBtn').disabled=false;
+    document.getElementById('animBtn').disabled=false;
+    statusEl.textContent=image.width+'×'+image.height+'  //  '+file.name;
+    startTime=performance.now();
+    schedRender();
+    estimateDepth();
+  };
+  image.src=url;
+}
+
+// ── ML depth estimation ───────────────────────────────────────────────────────
+
+const DEPTH_MODELS=[
+  'onnx-community/depth-anything-v2-small-hf',
+  'Xenova/depth-anything-small-hf',
+];
+
+async function ensureDepthPipeline(){
+  if(depthPipe)return depthPipe;
+  if(depthPipeLoading)return null;
+  depthPipeLoading=true;
+  let transformers;
+  try{
+    setDepthStatus('loading library...');
+    transformers=await import('https://cdn.jsdelivr.net/npm/@huggingface/transformers@3');
+    transformers.env.allowLocalModels=false;
+  }catch(e){
+    depthPipeLoading=false;
+    setDepthStatus('CDN error');
+    console.error('Transformers.js import failed:',e);
+    return null;
+  }
+  for(const modelId of DEPTH_MODELS){
+    try{
+      setDepthStatus('loading model...');
+      depthPipe=await transformers.pipeline('depth-estimation',modelId,{
+        progress_callback(p){
+          if(p.status==='progress'&&p.total)
+            setDepthStatus('downloading '+Math.round(p.progress)+'%');
+        }
+      });
+      depthPipeLoading=false;
+      console.log('Depth model loaded:',modelId);
+      return depthPipe;
+    }catch(e){
+      console.warn('Model failed, trying next:',modelId,e.message||e);
+      depthPipe=null;
+    }
+  }
+  depthPipeLoading=false;
+  setDepthStatus('model unavailable');
+  return null;
+}
+
+async function estimateDepth(){
+  if(!sourceImage)return;
+  const pipe=await ensureDepthPipeline();
+  if(!pipe||!sourceImage)return;
+  setDepthStatus('estimating...');
+  const offscreen=document.createElement('canvas');
+  offscreen.width=sourceImage.width;offscreen.height=sourceImage.height;
+  offscreen.getContext('2d').drawImage(sourceImage,0,0);
+  const blobUrl=await new Promise(res=>offscreen.toBlob(b=>res(URL.createObjectURL(b)),'image/png'));
+  try{
+    const result=await pipe(blobUrl);
+    URL.revokeObjectURL(blobUrl);
+    const depth=result.depth;
+    const dW=depth.width,dH=depth.height;
+    const ch=depth.channels||1;
+    const raw=new Uint8Array(dW*dH);
+    for(let i=0;i<dW*dH;i++)raw[i]=depth.data[i*ch];
+    mlDepthRaw={data:raw,w:dW,h:dH};
+    mlDepthInverted=true; // DA v2 outputs near=dark; invert so near=bright matches shader
+    document.getElementById('invertBtn').classList.add('on');
+    applyDepthProcessing();
+    setDepthOpsActive(true);
+  }catch(e){
+    URL.revokeObjectURL(blobUrl);
+    setDepthStatus('estimation failed');
+    console.error('Depth estimation error:',e);
+  }
+}
+
+// ── Depth processing (smoothing + inversion) ──────────────────────────────────
+
+function boxBlur(src,w,h,r){
+  const tmp=new Uint8Array(src.length);
+  const diam=2*r+1;
+  for(let y=0;y<h;y++){
+    for(let x=0;x<w;x++){
+      let s=0;
+      for(let k=-r;k<=r;k++)s+=src[y*w+Math.max(0,Math.min(w-1,x+k))];
+      tmp[y*w+x]=s/diam;
+    }
+  }
+  const out=new Uint8Array(src.length);
+  for(let y=0;y<h;y++){
+    for(let x=0;x<w;x++){
+      let s=0;
+      for(let k=-r;k<=r;k++)s+=tmp[Math.max(0,Math.min(h-1,y+k))*w+x];
+      out[y*w+x]=s/diam;
+    }
+  }
+  return out;
+}
+
+function applyDepthProcessing(){
+  if(!mlDepthRaw)return;
+  const {data,w,h}=mlDepthRaw;
+  const r=Math.round(gv('dsmooth'));
+  let processed=new Uint8Array(data);
+  if(mlDepthInverted)for(let i=0;i<processed.length;i++)processed[i]=255-processed[i];
+  if(r>0)processed=boxBlur(processed,w,h,r);
+
+  const pixels=new Uint8Array(w*h*4);
+  for(let i=0;i<w*h;i++){
+    const v=processed[i];
+    pixels[i*4]=v;pixels[i*4+1]=v;pixels[i*4+2]=v;pixels[i*4+3]=255;
+  }
+
+  gl.activeTexture(gl.TEXTURE1);
+  gl.bindTexture(gl.TEXTURE_2D,depthTex);
+  gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,w,h,0,gl.RGBA,gl.UNSIGNED_BYTE,pixels);
+
+  mlDepthCanvas=document.createElement('canvas');
+  mlDepthCanvas.width=w;mlDepthCanvas.height=h;
+  const mctx=mlDepthCanvas.getContext('2d');
+  const imgd=mctx.createImageData(w,h);
+  imgd.data.set(pixels);mctx.putImageData(imgd,0,0);
+
+  mlDepthReady=true;
+  buildDepthThumb();
+  const label=mlDepthInverted?(r>0?'ML ↕ smoothed':'ML ↕'):(r>0?'ML smoothed':'ML depth');
+  setDepthStatus(label,true);
+  schedRender();
+}
+
+function toggleDepthInvert(){
+  if(!mlDepthRaw)return;
+  mlDepthInverted=!mlDepthInverted;
+  document.getElementById('invertBtn').classList.toggle('on',mlDepthInverted);
+  applyDepthProcessing();
+}
+
+// ── Depth thumbnail ───────────────────────────────────────────────────────────
+
+function buildDepthThumb(){
+  if(!sourceImage)return;
+  const W=srcThumb.width,H=srcThumb.height;
+  const ctxDep=depThumb.getContext('2d');
+  if(mlDepthReady&&mlDepthCanvas){ctxDep.drawImage(mlDepthCanvas,0,0,W,H);return;}
+  const id=srcThumb.getContext('2d').getImageData(0,0,W,H);
+  const d=id.data;
+  const mid=gv('mid');
+  for(let y=0;y<H;y++){
+    const yf=1.0-(y/H);
+    for(let x=0;x<W;x++){
+      const i=(y*W+x)*4;
+      const l=0.2126*d[i]/255+0.7152*d[i+1]/255+0.0722*d[i+2]/255;
+      const v=Math.min(255,Math.max(0,Math.round((l*(1-mid)+yf*mid)*255)));
+      d[i]=v;d[i+1]=v;d[i+2]=v;d[i+3]=255;
+    }
+  }
+  ctxDep.putImageData(id,0,0);
+}
+function mixVal(a,b,t){return a*(1-t)+b*t;}
+function rebuildDepthProxy(){
+  if(!mlDepthReady)buildDepthThumb();
+  schedRender();
+}
+
+// ── Render ────────────────────────────────────────────────────────────────────
+
+function render(){
+  if(!sourceImage)return;
+  const t=startTime?(performance.now()-startTime)/1000:0;
+  gl.useProgram(prog);
+  gl.enableVertexAttribArray(posLoc);
+  gl.bindBuffer(gl.ARRAY_BUFFER,buf);
+  gl.vertexAttribPointer(posLoc,2,gl.FLOAT,false,0,0);
+
+  gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,tex);gl.uniform1i(U.u_tex,0);
+  gl.activeTexture(gl.TEXTURE1);gl.bindTexture(gl.TEXTURE_2D,depthTex);gl.uniform1i(U.u_depth_tex,1);
+
+  gl.uniform2f(U.u_res,glCanvas.width,glCanvas.height);
+  gl.uniform1f(U.u_time,t);
+  gl.uniform1i(U.u_use_ml_depth,mlDepthReady?1:0);
+  gl.uniform1f(U.u_shift,gv('shift'));
+  gl.uniform1f(U.u_converge,gv('converge'));
+  gl.uniform1f(U.u_nfb,gv('nfb'));
+  gl.uniform1f(U.u_mid,gv('mid'));
+  gl.uniform1f(U.u_max_disp,gv('maxdisp'));
+  gl.uniform1i(U.u_float_win,floatWin?1:0);
+  gl.uniform1f(U.u_rivalry,gv('rivalry')/100);
+  gl.uniform1f(U.u_ghost,gv('ghost')/100);
+  gl.uniform1f(U.u_mtb,gv('mtb')/100);
+  gl.uniform1i(U.u_mode,layers.dubois?anaglyphMode:0);
+  gl.uniform1f(U.u_src_red,1.0+gv('srcred')/100);
+  gl.uniform1i(U.u_far,layers.far?1:0);
+  gl.uniform1f(U.u_fara,gv('fara'));
+  gl.uniform1f(U.u_haze,gv('haze')/100);
+  gl.uniform1i(U.u_edge,layers.edge?1:0);
+  gl.uniform1f(U.u_esculpt,gv('esculpt')/100);
+  gl.uniform1f(U.u_ethr,gv('ethr')/100);
+  gl.uniform1i(U.u_irid,layers.irid?1:0);
+  gl.uniform1f(U.u_irint,gv('irint')/100);
+  gl.uniform1f(U.u_irsc,gv('irsc'));
+  gl.uniform1i(U.u_temp,layers.temp?1:0);
+  gl.uniform1f(U.u_pdep,gv('pdep')/100);
+  gl.uniform1f(U.u_pfrq,gv('pfrq')*0.1);
+
+  gl.drawArrays(gl.TRIANGLES,0,6);
+}
+
+let schedId=null;
+function schedRender(){
+  if(layers.temp&&sourceImage&&animRunning)return;
+  if(schedId)cancelAnimationFrame(schedId);
+  schedId=requestAnimationFrame(render);
+  if(layers.temp&&sourceImage&&!animRunning)startAnim();
+  if(!layers.temp&&animRunning)stopAnim();
+}
+
+function startAnim(){
+  if(animRunning)return;
+  animRunning=true;
+  animBtn.textContent='⏸ pause pulse';
+  animBtn.classList.add('btn-red');
+  function loop(){if(!animRunning)return;render();rafId=requestAnimationFrame(loop);}
+  loop();
+}
+function stopAnim(){
+  animRunning=false;
+  if(rafId)cancelAnimationFrame(rafId);
+  animBtn.textContent='▶ start pulse';
+  animBtn.classList.remove('btn-red');
+}
+function toggleAnim(){
+  if(!sourceImage)return;
+  if(animRunning)stopAnim();
+  else{
+    layers.temp=true;
+    document.getElementById('t-temp').classList.add('on');
+    document.getElementById('l-temp').classList.add('active');
+    startAnim();
+  }
+}
+
+function resetAll(){
+  sourceImage=null;mlDepthReady=false;mlDepthCanvas=null;mlDepthRaw=null;mlDepthInverted=false;
+  stopAnim();
+  glCanvas.style.display='none';
+  document.getElementById('placeholder').style.display='block';
+  document.getElementById('saveBtn').disabled=true;
+  document.getElementById('resetBtn').disabled=true;
+  document.getElementById('animBtn').disabled=true;
+  srcThumb.getContext('2d').clearRect(0,0,srcThumb.width,srcThumb.height);
+  depThumb.getContext('2d').clearRect(0,0,depThumb.width,depThumb.height);
+  statusEl.textContent='open an image to begin';
+  setDepthStatus('luminance');
+  setDepthOpsActive(false);
+  document.getElementById('invertBtn').classList.remove('on');
+  fi.value='';
+}
+
+function saveImg(){
+  if(!sourceImage)return;
+  render();
+  const a=document.createElement('a');
+  const base=loadedFileName.substring(0,loadedFileName.lastIndexOf('.'))||loadedFileName;
+  a.download='NF3D_'+base+'.png';
+  a.href=glCanvas.toDataURL('image/png');
+  a.click();
+}
+</script>
+</body>
+</html>
