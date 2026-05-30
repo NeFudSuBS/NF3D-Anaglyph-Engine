@@ -31,7 +31,7 @@ If the model fails to load (no internet, corporate firewall) the app falls back 
 
 1. Drop a JPG, PNG, or WEBP onto the app
 2. Depth Anything V2 analyses the image and produces a depth map — closer objects brighter, distant objects darker
-3. A WebGL shader displaces left and right eye views horizontally based on that depth map
+3. A WebGL shader displaces left and right eye views horizontally based on that depth map. An occlusion guard prevents background pixels from stretching over foreground edges at depth discontinuities
 4. The two views are combined through a Dubois colour matrix into a red-cyan anaglyph
 5. Adjust sliders to taste, then save as PNG
 
@@ -62,7 +62,7 @@ If the model fails to load (no internet, corporate firewall) the app falls back 
 Attenuates and hazes distant areas to reinforce depth perspective.
 
 ### Edge Sculpting
-Sobel edge detection overlay — adds subtle emissive highlights at depth boundaries.
+Sobel edge detection with depth-weighted unsharp masking — boosts local colour contrast at object boundaries, with stronger enhancement toward the foreground. This reinforces depth separation rather than just adding a tint.
 
 ### Iridescence Noise
 Rainbow shimmer noise layer — optional creative effect.
@@ -75,7 +75,7 @@ These appear once the ML depth model has run.
 
 | Control | What it does |
 |---|---|
-| Smooth | Box-blurs the depth map before rendering — reduces halo artifacts at object edges |
+| Smooth | Applies an edge-aware bilateral filter to the depth map guided by source image luminance — smooths depth across flat regions without bleeding across colour edges. Slider fires on release (values above 5 are noticeably slow) |
 | ⇅ Invert | Flips the depth map — enabled by default to match Depth Anything V2's output convention |
 
 ---
