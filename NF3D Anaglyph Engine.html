@@ -268,6 +268,18 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:12px;heigh
         <input type="range" id="s-dsmooth" min="0" max="15" value="0" step="1" style="width:80px;flex-shrink:0" oninput="document.getElementById('v-dsmooth').textContent=this.value" onchange="applyDepthProcessing()">
         <span class="dop-val" id="v-dsmooth">0</span>
         <div class="dop-sep"></div>
+        <span class="dop-lbl">sharpen</span>
+        <input type="range" id="s-dsharpen" min="0" max="100" value="0" step="1" style="width:50px;flex-shrink:0" oninput="document.getElementById('v-dsharpen').textContent=this.value" onchange="applyDepthProcessing()">
+        <span class="dop-val" id="v-dsharpen">0</span>
+        <div class="dop-sep"></div>
+        <span class="dop-lbl">luma det</span>
+        <input type="range" id="s-dlumadet" min="0" max="100" value="0" step="1" style="width:50px;flex-shrink:0" oninput="document.getElementById('v-dlumadet').textContent=this.value" onchange="applyDepthProcessing()">
+        <span class="dop-val" id="v-dlumadet">0</span>
+        <div class="dop-sep"></div>
+        <span class="dop-lbl">lum blend</span>
+        <input type="range" id="s-dblend" min="0" max="100" value="100" step="1" style="width:60px;flex-shrink:0" oninput="document.getElementById('v-dblend').textContent=this.value+'%';schedRender()">
+        <span class="dop-val" id="v-dblend">100%</span>
+        <div class="dop-sep"></div>
         <button class="dop-btn" id="invertBtn" onclick="toggleDepthInvert()">⇅ invert</button>
       </div>
     </div>
@@ -320,6 +332,7 @@ varying vec2 v_uv;
 uniform sampler2D u_tex;
 uniform sampler2D u_depth_tex;
 uniform bool u_use_ml_depth;
+uniform float u_depth_blend;
 uniform vec2 u_res;
 uniform float u_time;
 
@@ -364,8 +377,16 @@ void main(){
   vec2 texel=1.0/u_res;
   vec4 base=texture2D(u_tex,uv);
 
-  float rawDepth=u_use_ml_depth?texture2D(u_depth_tex,uv).r:lum(base.rgb);
-  float pseudoDepth=u_use_ml_depth?rawDepth:mix(rawDepth,uv.y,u_mid);
+  float lumD=lum(base.rgb);
+  float rawDepth,pseudoDepth;
+  if(u_use_ml_depth){
+    float mlD=texture2D(u_depth_tex,uv).r;
+    rawDepth=mix(lumD,mlD,u_depth_blend);
+    pseudoDepth=rawDepth;
+  }else{
+    rawDepth=lumD;
+    pseudoDepth=mix(lumD,uv.y,u_mid);
+  }
   float nearness=pow(smoothstep(0.0,1.0,pseudoDepth),1.0+u_nfb*2.0);
 
   float margin=0.03;
@@ -394,8 +415,10 @@ void main(){
 
   // Occlusion guard: if displaced sample is significantly behind current fragment,
   // pull UV back toward origin to avoid stretching background over foreground edges
-  float dL=u_use_ml_depth?texture2D(u_depth_tex,uvL).r:lum(texture2D(u_tex,uvL).rgb);
-  float dR=u_use_ml_depth?texture2D(u_depth_tex,uvR).r:lum(texture2D(u_tex,uvR).rgb);
+  float lumDL=lum(texture2D(u_tex,uvL).rgb);
+  float lumDR=lum(texture2D(u_tex,uvR).rgb);
+  float dL=u_use_ml_depth?mix(lumDL,texture2D(u_depth_tex,uvL).r,u_depth_blend):lumDL;
+  float dR=u_use_ml_depth?mix(lumDR,texture2D(u_depth_tex,uvR).r,u_depth_blend):lumDR;
   if(dL<rawDepth-0.15)uvL=mix(uv,uvL,0.15);
   if(dR<rawDepth-0.15)uvR=mix(uv,uvR,0.15);
 
@@ -503,7 +526,7 @@ gl.bindBuffer(gl.ARRAY_BUFFER,buf);
 gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-1,-1,1,-1,-1,1,-1,1,1,-1,1,1]),gl.STATIC_DRAW);
 
 const U={};
-['u_tex','u_depth_tex','u_use_ml_depth',
+['u_tex','u_depth_tex','u_use_ml_depth','u_depth_blend',
  'u_res','u_time','u_shift','u_converge','u_nfb','u_mid','u_max_disp','u_float_win',
  'u_rivalry','u_ghost','u_mtb','u_mode','u_src_red',
  'u_far','u_fara','u_haze','u_edge','u_esculpt','u_ethr',
@@ -587,6 +610,12 @@ function load(file){
     document.getElementById('invertBtn').classList.remove('on');
     document.getElementById('s-dsmooth').value=0;
     document.getElementById('v-dsmooth').textContent='0';
+    document.getElementById('s-dsharpen').value=0;
+    document.getElementById('v-dsharpen').textContent='0';
+    document.getElementById('s-dlumadet').value=0;
+    document.getElementById('v-dlumadet').textContent='0';
+    document.getElementById('s-dblend').value=100;
+    document.getElementById('v-dblend').textContent='100%';
     setDepthStatus('luminance');
     setDepthOpsActive(false);
 
@@ -689,6 +718,21 @@ async function estimateDepth(){
 
 // ── Depth processing (smoothing + inversion) ──────────────────────────────────
 
+function boxBlur(src,w,h,r){
+  const tmp=new Float32Array(w*h),out=new Float32Array(w*h),d=2*r+1;
+  for(let y=0;y<h;y++)
+    for(let x=0;x<w;x++){
+      let s=0;for(let kx=x-r;kx<=x+r;kx++)s+=src[y*w+Math.max(0,Math.min(w-1,kx))];
+      tmp[y*w+x]=s/d;
+    }
+  for(let y=0;y<h;y++)
+    for(let x=0;x<w;x++){
+      let s=0;for(let ky=y-r;ky<=y+r;ky++)s+=tmp[Math.max(0,Math.min(h-1,ky))*w+x];
+      out[y*w+x]=s/d;
+    }
+  return out;
+}
+
 function bilateralFilter(src,guide,w,h,r){
   // Edge-aware smoothing: depth values near colour edges are not blended across them
   const out=new Uint8Array(src.length);
@@ -720,18 +764,40 @@ function applyDepthProcessing(){
   setTimeout(()=>{
     const {data,w,h}=mlDepthRaw;
     const r=Math.round(gv('dsmooth'));
+    const sharpen=gv('dsharpen')/100;
+    const lumaStr=gv('dlumadet')/100;
     let processed=new Uint8Array(data);
     if(mlDepthInverted)for(let i=0;i<processed.length;i++)processed[i]=255-processed[i];
 
-    if(r>0){
-      // Build a luminance guide from the source image at depth-map resolution
+    // Build luma guide once — shared by bilateral filter and luma detail injection
+    let lum=null;
+    if(r>0||lumaStr>0){
       const guideCvs=document.createElement('canvas');
       guideCvs.width=w;guideCvs.height=h;
       guideCvs.getContext('2d').drawImage(sourceImage,0,0,w,h);
       const gd=guideCvs.getContext('2d').getImageData(0,0,w,h).data;
-      const lum=new Uint8Array(w*h);
+      lum=new Uint8Array(w*h);
       for(let i=0;i<w*h;i++)lum[i]=0.2126*gd[i*4]+0.7152*gd[i*4+1]+0.0722*gd[i*4+2];
-      processed=bilateralFilter(processed,lum,w,h,r);
+    }
+
+    if(r>0)processed=bilateralFilter(processed,lum,w,h,r);
+
+    // Depth unsharp mask — sharpens depth edges without involving luminance
+    if(sharpen>0){
+      const blurred=boxBlur(processed,w,h,5);
+      for(let i=0;i<w*h;i++){
+        const det=processed[i]-blurred[i];
+        processed[i]=Math.max(0,Math.min(255,Math.round(processed[i]+det*sharpen*2.5)));
+      }
+    }
+
+    // High-pass luminance injection — adds fine image detail into depth
+    if(lumaStr>0){
+      const blurredLum=boxBlur(lum,w,h,12);
+      for(let i=0;i<w*h;i++){
+        const det=lum[i]-blurredLum[i]; // signed high-pass: +ve = bright detail, -ve = dark detail
+        processed[i]=Math.max(0,Math.min(255,Math.round(processed[i]+det*lumaStr*0.8)));
+      }
     }
 
     const pixels=new Uint8Array(w*h*4);
@@ -752,8 +818,12 @@ function applyDepthProcessing(){
 
     mlDepthReady=true;
     buildDepthThumb();
-    const label=mlDepthInverted?(r>0?'ML ↕ filtered':'ML ↕'):(r>0?'ML filtered':'ML depth');
-    setDepthStatus(label,true);
+    const parts=[];
+    if(mlDepthInverted)parts.push('↕');
+    if(r>0)parts.push('smooth');
+    if(sharpen>0)parts.push('sharp');
+    if(lumaStr>0)parts.push('luma');
+    setDepthStatus('ML'+(parts.length?' '+parts.join(' '):' depth'),true);
     schedRender();
   },10);
 }
@@ -808,6 +878,7 @@ function render(){
   gl.uniform2f(U.u_res,glCanvas.width,glCanvas.height);
   gl.uniform1f(U.u_time,t);
   gl.uniform1i(U.u_use_ml_depth,mlDepthReady?1:0);
+  gl.uniform1f(U.u_depth_blend,mlDepthReady?gv('dblend')/100:0.0);
   gl.uniform1f(U.u_shift,gv('shift'));
   gl.uniform1f(U.u_converge,gv('converge'));
   gl.uniform1f(U.u_nfb,gv('nfb'));
@@ -883,6 +954,12 @@ function resetAll(){
   setDepthStatus('luminance');
   setDepthOpsActive(false);
   document.getElementById('invertBtn').classList.remove('on');
+  document.getElementById('s-dsharpen').value=0;
+  document.getElementById('v-dsharpen').textContent='0';
+  document.getElementById('s-dlumadet').value=0;
+  document.getElementById('v-dlumadet').textContent='0';
+  document.getElementById('s-dblend').value=100;
+  document.getElementById('v-dblend').textContent='100%';
   fi.value='';
 }
 
