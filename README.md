@@ -75,7 +75,10 @@ These appear once the ML depth model has run.
 
 | Control | What it does |
 |---|---|
-| Smooth | Applies an edge-aware bilateral filter to the depth map guided by source image luminance — smooths depth across flat regions without bleeding across colour edges. Slider fires on release (values above 5 are noticeably slow) |
+| Smooth | Edge-aware bilateral filter on the depth map, guided by source image luminance — smooths depth across flat regions without bleeding across colour edges. Fires on release (values above 5 are noticeably slow) |
+| Sharpen | Unsharp mask applied to the depth map itself — sharpens depth edges without involving luminance, no false geometry risk |
+| Luma det | High-pass luminance injected into depth — recovers fine image detail (hair, bark, clothing folds) that the ML model smooths over. Fires on release |
+| Lum blend | Real-time shader slider: blends between pure ML depth (100%) and raw luminance depth (0%). Best left near 100%; lower values add luminance as a direct depth signal, which can mislead on dark foreground / bright background scenes |
 | ⇅ Invert | Flips the depth map — enabled by default to match Depth Anything V2's output convention |
 
 ---
