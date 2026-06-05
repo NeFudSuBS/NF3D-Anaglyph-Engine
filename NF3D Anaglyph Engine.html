@@ -154,16 +154,25 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:12px;heigh
             </div>
           </div>
           <div class="ctrl">
-            <div class="ctrl-row"><span class="ctrl-lbl">rivalry dampener</span><span class="ctrl-val" id="v-rivalry">30%</span></div>
-            <input type="range" id="s-rivalry" min="0" max="100" value="30" step="5" oninput="slv(this,'rivalry','%');schedRender()">
+            <div class="ctrl-row">
+              <span class="ctrl-lbl">wimmer half-col</span>
+              <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
+                <input type="checkbox" id="wimmerCheck" onchange="wimmerMode=this.checked;schedRender()" style="accent-color:var(--accent);width:13px;height:13px;cursor:pointer">
+                <span class="ctrl-val" style="font-size:9px">HALF-COL only</span>
+              </label>
+            </div>
           </div>
           <div class="ctrl">
-            <div class="ctrl-row"><span class="ctrl-lbl">ghost reduction</span><span class="ctrl-val" id="v-ghost">70%</span></div>
-            <input type="range" id="s-ghost" min="0" max="100" value="70" step="1" oninput="slv(this,'ghost','%');schedRender()">
+            <div class="ctrl-row"><span class="ctrl-lbl">rivalry dampener</span><span class="ctrl-val" id="v-rivalry">10%</span></div>
+            <input type="range" id="s-rivalry" min="0" max="100" value="10" step="5" oninput="slv(this,'rivalry','%');schedRender()">
           </div>
           <div class="ctrl">
-            <div class="ctrl-row"><span class="ctrl-lbl">magenta–teal bias</span><span class="ctrl-val" id="v-mtb">40%</span></div>
-            <input type="range" id="s-mtb" min="0" max="100" value="40" step="1" oninput="slv(this,'mtb','%');schedRender()">
+            <div class="ctrl-row"><span class="ctrl-lbl">ghost reduction</span><span class="ctrl-val" id="v-ghost">25%</span></div>
+            <input type="range" id="s-ghost" min="0" max="100" value="25" step="1" oninput="slv(this,'ghost','%');schedRender()">
+          </div>
+          <div class="ctrl">
+            <div class="ctrl-row"><span class="ctrl-lbl">magenta–teal bias</span><span class="ctrl-val" id="v-mtb">0%</span></div>
+            <input type="range" id="s-mtb" min="0" max="100" value="0" step="1" oninput="slv(this,'mtb','%');schedRender()">
           </div>
           <div class="ctrl">
             <div class="ctrl-row"><span class="ctrl-lbl">red balance</span><span class="ctrl-val" id="v-srcred">0%</span></div>
@@ -314,6 +323,7 @@ let mlDepthRaw=null; // {data:Uint8Array, w, h}
 let mlDepthInverted=false;
 let depthPipe=null,depthPipeLoading=false;
 let anaglyphMode=1; // 1=RC-Dubois, 2=amber-blue, 3=half-colour
+let wimmerMode=false;
 let floatWin=false;
 
 // ── Shaders ───────────────────────────────────────────────────────────────────
@@ -359,6 +369,7 @@ uniform bool u_irid;
 uniform float u_irint;
 uniform float u_irsc;
 uniform bool u_temp;
+uniform bool u_wimmer;
 uniform float u_pdep;
 uniform float u_pfrq;
 
@@ -425,47 +436,54 @@ void main(){
   vec4 leftTex=texture2D(u_tex,uvL);
   vec4 rightTex=texture2D(u_tex,uvR);
 
+  // Unified linear pipeline — decode once, encode once at end
+  vec3 linL=pow(clamp(leftTex.rgb,0.0,1.0),vec3(2.2));
+  vec3 linR=pow(clamp(rightTex.rgb,0.0,1.0),vec3(2.2));
+
+  // Far-field recession in linear space (0.214 = linear equivalent of sRGB 0.5 grey)
   if(u_far){
     float hz=(1.0-nearness)*u_haze*0.35;
-    leftTex.rgb=mix(leftTex.rgb,vec3(0.5),hz);
-    rightTex.rgb=mix(rightTex.rgb,vec3(0.5),hz);
+    linL=mix(linL,vec3(0.214),hz);
+    linR=mix(linR,vec3(0.214),hz);
   }
 
-  vec3 lc=leftTex.rgb;
-  vec3 rc=rightTex.rgb;
+  // Red balance in linear space
+  linL.r*=u_src_red; linR.r*=u_src_red;
 
-  // Red balance correction (applied before colour split)
-  lc.r*=u_src_red; rc.r*=u_src_red;
-
-  // Rivalry dampening
+  // Rivalry dampening in linear space
   if(u_rivalry>0.0){
-    lc=mix(lc,vec3(lum(lc)),u_rivalry*0.4);
-    rc=mix(rc,vec3(lum(rc)),u_rivalry*0.4);
+    float lumL=dot(linL,vec3(0.2126,0.7152,0.0722));
+    float lumR=dot(linR,vec3(0.2126,0.7152,0.0722));
+    linL=mix(linL,vec3(lumL),u_rivalry*0.4);
+    linR=mix(linR,vec3(lumR),u_rivalry*0.4);
   }
 
   vec3 outCol;
   if(u_mode==1){
-    // Red-cyan Dubois in linear light
-    vec3 linL=pow(clamp(lc,0.0,1.0),vec3(2.2));
-    vec3 linR=pow(clamp(rc,0.0,1.0),vec3(2.2));
+    // RC Dubois
     float dr= 0.437*linL.r+0.449*linL.g+0.164*linL.b-0.011*linR.r-0.032*linR.g-0.007*linR.b;
     float dg=-0.062*linL.r-0.062*linL.g-0.024*linL.b+0.377*linR.r+0.761*linR.g+0.009*linR.b;
     float db=-0.048*linL.r-0.050*linL.g-0.017*linL.b-0.026*linR.r-0.093*linR.g+1.258*linR.b;
-    float cgrey=lum(vec3(0.0,dg,db));
+    float cgrey=dot(vec3(0.0,dg,db),vec3(0.2126,0.7152,0.0722));
     dg=mix(cgrey,dg,1.0-u_ghost*0.5);
     db=mix(cgrey,db,1.0-u_ghost*0.5);
     float bias=u_mtb;
-    dr+=bias*0.12;dg+=bias*0.08;db+=bias*0.15;
-    outCol=pow(clamp(vec3(dr,dg,db),0.0,1.0),vec3(1.0/2.2));
+    dr+=bias*0.05;dg+=bias*0.03;db+=bias*0.06;
+    outCol=vec3(dr,dg,db);
   } else if(u_mode==2){
-    // Amber-blue (left through amber=R+G, right through blue=B)
-    outCol=vec3(lc.r,lc.g,rc.b);
+    // Amber-blue (linear)
+    outCol=vec3(linL.r,linL.g,linR.b);
   } else if(u_mode==3){
-    // Half-colour (greyscale left through red, colour right through cyan)
-    outCol=vec3(lum(lc),rc.g,rc.b);
+    // Half-colour — standard luma or Wimmer optimised
+    if(u_wimmer){
+      float wl=0.7*linL.g+0.3*linL.b;
+      outCol=vec3(max(wl,linL.r*0.8),linR.g,linR.b);
+    }else{
+      outCol=vec3(dot(linL,vec3(0.2126,0.7152,0.0722)),linR.g,linR.b);
+    }
   } else {
-    // Simple split
-    outCol=vec3(lc.r,rc.g,rc.b);
+    // Simple split (linear)
+    outCol=vec3(linL.r,linR.g,linR.b);
   }
 
   // Floating window: hard per-eye border keyed to current disparity range
@@ -498,7 +516,8 @@ void main(){
     outCol=mix(vec3(lum(outCol)),outCol,lphase);
   }
 
-  gl_FragColor=vec4(clamp(outCol,0.0,1.0),base.a);
+  outCol=pow(clamp(outCol,0.0,1.0),vec3(1.0/2.2));
+  gl_FragColor=vec4(outCol,base.a);
 }`;
 
 // ── WebGL setup ───────────────────────────────────────────────────────────────
@@ -530,7 +549,7 @@ const U={};
  'u_res','u_time','u_shift','u_converge','u_nfb','u_mid','u_max_disp','u_float_win',
  'u_rivalry','u_ghost','u_mtb','u_mode','u_src_red',
  'u_far','u_fara','u_haze','u_edge','u_esculpt','u_ethr',
- 'u_irid','u_irint','u_irsc','u_temp','u_pdep','u_pfrq'].forEach(n=>{
+ 'u_irid','u_irint','u_irsc','u_temp','u_pdep','u_pfrq','u_wimmer'].forEach(n=>{
   U[n]=gl.getUniformLocation(prog,n);
 });
 
@@ -900,6 +919,7 @@ function render(){
   gl.uniform1f(U.u_irint,gv('irint')/100);
   gl.uniform1f(U.u_irsc,gv('irsc'));
   gl.uniform1i(U.u_temp,layers.temp?1:0);
+  gl.uniform1i(U.u_wimmer,wimmerMode?1:0);
   gl.uniform1f(U.u_pdep,gv('pdep')/100);
   gl.uniform1f(U.u_pfrq,gv('pfrq')*0.1);
 
