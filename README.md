@@ -32,7 +32,7 @@ If the model fails to load (no internet, corporate firewall) the app falls back 
 1. Drop a JPG, PNG, or WEBP onto the app
 2. Depth Anything V2 analyses the image and produces a depth map — closer objects brighter, distant objects darker
 3. A WebGL shader displaces left and right eye views horizontally based on that depth map. An occlusion guard prevents background pixels from stretching over foreground edges at depth discontinuities
-4. The two views are combined through a Dubois colour matrix into a red-cyan anaglyph. The matrix operates in linear light (sRGB decoded before the matrix, re-encoded after) for physically correct colour blending
+4. The two views are combined through a Dubois colour matrix into a red-cyan anaglyph. The entire colour pipeline — far-field haze, rivalry dampening, red balance, and all anaglyph modes — operates in linear light (sRGB decoded once at the start, re-encoded once at the end) for physically correct colour blending
 5. Adjust sliders to taste, then save as PNG
 
 ---
@@ -52,11 +52,12 @@ If the model fails to load (no internet, corporate firewall) the app falls back 
 ### Dubois & Spectral
 | Control | What it does |
 |---|---|
-| Mode | **RC DUBOIS** — optimised red-cyan matrix, best general use; operates in linear light for accurate colour. **AMBER-BLUE** — better for warm or red-heavy images. **HALF-COL** — greyscale left eye, colour right eye, minimal ghosting |
-| Rivalry dampener | Desaturates each eye view slightly to reduce binocular colour rivalry |
+| Mode | **RC DUBOIS** — optimised red-cyan matrix, best general use. **AMBER-BLUE** — better for warm or red-heavy images. **HALF-COL** — greyscale left eye, colour right eye, minimal ghosting |
+| Wimmer half-col | Checkbox (HALF-COL mode only) — switches the left-eye luminance to Wimmer's optimised weighting (0.7G + 0.3B) which preserves reds that standard luma crushes. Off by default; worth comparing on images with vivid warm colours |
+| Rivalry dampener | Desaturates each eye view slightly in linear light to reduce binocular colour rivalry |
 | Ghost reduction | Reduces colour leakage between channels |
 | Magenta–teal bias | Fine-tunes the colour balance of the composite |
-| Red balance | Scale the red channel before the colour matrix — reduce for warm/sunset images |
+| Red balance | Scales the red channel in linear space — reduce for warm/sunset images |
 
 ### Far-Field Recession
 Attenuates and hazes distant areas to reinforce depth perspective.
