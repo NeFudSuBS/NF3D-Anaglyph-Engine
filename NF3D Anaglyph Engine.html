@@ -64,6 +64,7 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:12px;heigh
 /* depth ops row */
 .depth-ops{background:var(--s1);border:0.5px solid var(--border);border-radius:7px;padding:8px 10px;display:flex;align-items:center;gap:8px;opacity:.35;pointer-events:none;transition:opacity .2s}
 .depth-ops.active{opacity:1;pointer-events:all}
+.ctrl.ml-inactive{opacity:0.3;pointer-events:none;transition:opacity .2s}
 .dop-lbl{font-family:var(--font-mono);font-size:9px;color:var(--muted);letter-spacing:.05em;white-space:nowrap}
 .dop-val{font-family:var(--font-mono);font-size:9px;color:var(--accent);min-width:18px;text-align:right}
 .dop-btn{background:transparent;border:0.5px solid var(--border);color:var(--muted);font-family:var(--font-mono);font-size:9px;padding:3px 9px;border-radius:4px;cursor:pointer;transition:all .15s;white-space:nowrap;letter-spacing:.04em}
@@ -121,7 +122,7 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:12px;heigh
             <div class="ctrl-row"><span class="ctrl-lbl">near-field boost</span><span class="ctrl-val" id="v-nfb">0.5</span></div>
             <input type="range" id="s-nfb" min="0" max="1" value="0.5" step="0.05" oninput="slv(this,'nfb','');schedRender()">
           </div>
-          <div class="ctrl">
+          <div class="ctrl" id="ctrl-mid">
             <div class="ctrl-row"><span class="ctrl-lbl">mid-plane bridge</span><span class="ctrl-val" id="v-mid">0.5</span></div>
             <input type="range" id="s-mid" min="0" max="1" value="0.5" step="0.05" oninput="slv(this,'mid','');rebuildDepthProxy()">
           </div>
@@ -430,8 +431,8 @@ void main(){
   float lumDR=lum(texture2D(u_tex,uvR).rgb);
   float dL=u_use_ml_depth?mix(lumDL,texture2D(u_depth_tex,uvL).r,u_depth_blend):lumDL;
   float dR=u_use_ml_depth?mix(lumDR,texture2D(u_depth_tex,uvR).r,u_depth_blend):lumDR;
-  if(dL<rawDepth-0.15)uvL=mix(uv,uvL,0.15);
-  if(dR<rawDepth-0.15)uvR=mix(uv,uvR,0.15);
+  if(dL<rawDepth-0.15)uvL=uv;
+  if(dR<rawDepth-0.15)uvR=uv;
 
   vec4 leftTex=texture2D(u_tex,uvL);
   vec4 rightTex=texture2D(u_tex,uvR);
@@ -448,7 +449,8 @@ void main(){
   }
 
   // Red balance in linear space
-  linL.r*=u_src_red; linR.r*=u_src_red;
+  linL.r=clamp(linL.r*u_src_red,0.0,1.0);
+  linR.r=clamp(linR.r*u_src_red,0.0,1.0);
 
   // Rivalry dampening in linear space
   if(u_rivalry>0.0){
@@ -478,8 +480,8 @@ void main(){
     float dg=-0.062*linL.r-0.062*linL.g-0.024*linL.b+0.377*linR.r+0.761*linR.g+0.009*linR.b;
     float db=-0.048*linL.r-0.050*linL.g-0.017*linL.b-0.026*linR.r-0.093*linR.g+1.258*linR.b;
     float cgrey=dot(vec3(0.0,dg,db),vec3(0.2126,0.7152,0.0722));
-    dg=mix(cgrey,dg,1.0-u_ghost*0.5);
-    db=mix(cgrey,db,1.0-u_ghost*0.5);
+    dg=mix(cgrey,dg,1.0-u_ghost*0.8);
+    db=mix(cgrey,db,1.0-u_ghost*0.8);
     float bias=u_mtb;
     dr+=bias*0.05;dg+=bias*0.03;db+=bias*0.06;
     outCol=vec3(dr,dg,db);
@@ -601,6 +603,7 @@ function setDepthStatus(msg,ready){
 }
 function setDepthOpsActive(on){
   depthOpsEl.classList.toggle('active',on);
+  document.getElementById('ctrl-mid').classList.toggle('ml-inactive',on);
 }
 
 // ── File loading ──────────────────────────────────────────────────────────────
