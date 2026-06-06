@@ -86,7 +86,8 @@ These appear once the ML depth model has run.
 
 ## Tips
 
-- **Warm or red-heavy photos** (sunsets, portraits with warm skin tones) work better with the Red balance slider pulled down a little, or switch to Amber-Blue mode
+- **Best colour reproduction** is often achieved with **HALF-COL + Wimmer ticked + Red balance fully up**. Wimmer's left-eye weighting preserves reds that standard luma crushes, and boosting red balance compensates for the right eye's red channel being attenuated through cyan glasses. Start here if RC DUBOIS looks washed out
+- **Warm or red-heavy photos** (sunsets, portraits with warm skin tones) work better with the Red balance slider pulled down a little in RC DUBOIS mode, or switch to HALF-COL with Wimmer and red balance up
 - **Busy scenes** with many overlapping depth layers benefit from a small amount of depth smoothing (2–4)
 - **Convergence plane** around 0.4–0.6 keeps most subjects comfortable. Push it lower to make foreground objects pop more aggressively
 - **Max disparity** around 30–60px is comfortable for most images. Very large values may cause eye strain on complex scenes
