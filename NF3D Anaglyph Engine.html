@@ -458,6 +458,19 @@ void main(){
     linR=mix(linR,vec3(lumR),u_rivalry*0.4);
   }
 
+  // Edge sculpting applied per-eye at shifted positions — edges track displaced content
+  if(u_edge){
+    float gxL=lum(texture2D(u_tex,uvL+vec2(texel.x,0.0)).rgb)-lum(texture2D(u_tex,uvL-vec2(texel.x,0.0)).rgb);
+    float gyL=lum(texture2D(u_tex,uvL+vec2(0.0,texel.y)).rgb)-lum(texture2D(u_tex,uvL-vec2(0.0,texel.y)).rgb);
+    float emL=max(0.0,(sqrt(gxL*gxL+gyL*gyL)*2.0-u_ethr)/(1.0-u_ethr))*u_esculpt;
+    linL=clamp(linL+(linL-vec3(lum(linL)))*emL*nearness*2.5,0.0,1.0);
+
+    float gxR=lum(texture2D(u_tex,uvR+vec2(texel.x,0.0)).rgb)-lum(texture2D(u_tex,uvR-vec2(texel.x,0.0)).rgb);
+    float gyR=lum(texture2D(u_tex,uvR+vec2(0.0,texel.y)).rgb)-lum(texture2D(u_tex,uvR-vec2(0.0,texel.y)).rgb);
+    float emR=max(0.0,(sqrt(gxR*gxR+gyR*gyR)*2.0-u_ethr)/(1.0-u_ethr))*u_esculpt;
+    linR=clamp(linR+(linR-vec3(lum(linR)))*emR*nearness*2.5,0.0,1.0);
+  }
+
   vec3 outCol;
   if(u_mode==1){
     // RC Dubois
@@ -492,17 +505,6 @@ void main(){
     float lMask=step(border,uv.x);
     float rMask=1.0-step(1.0-border,uv.x);
     outCol=vec3(outCol.r*lMask,outCol.g*rMask,outCol.b*rMask);
-  }
-
-  if(u_edge){
-    vec3 t =texture2D(u_tex,uv+vec2(0.0, texel.y)).rgb;
-    vec3 bt=texture2D(u_tex,uv-vec2(0.0, texel.y)).rgb;
-    vec3 rt=texture2D(u_tex,uv+vec2(texel.x,0.0)).rgb;
-    vec3 lt=texture2D(u_tex,uv-vec2(texel.x,0.0)).rgb;
-    float gx=lum(rt)-lum(lt);float gy=lum(t)-lum(bt);
-    float edge=sqrt(gx*gx+gy*gy)*2.0;
-    float em=max(0.0,(edge-u_ethr)/(1.0-u_ethr))*u_esculpt;
-    outCol+=(outCol-vec3(lum(outCol)))*em*nearness*2.5;
   }
 
   if(u_irid){
