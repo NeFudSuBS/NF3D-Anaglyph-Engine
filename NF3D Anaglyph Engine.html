@@ -10,6 +10,7 @@
 :root{
   --bg:#0a0a0c;--s1:#111115;--s2:#18181e;--border:#222228;
   --accent:#00e5cc;--red:#ff2040;--muted:#55535f;--text:#dddbe6;
+  --val:#e2deec;
   --font-mono:'Share Tech Mono',monospace;--font-ui:'Outfit',sans-serif;
 }
 body{background:var(--bg);color:var(--text);font-family:var(--font-ui);padding:1.25rem;min-height:100vh}
@@ -40,7 +41,7 @@ input[type=file]{display:none}
 .ctrl{display:flex;flex-direction:column;gap:3px}
 .ctrl-row{display:flex;justify-content:space-between;align-items:center}
 .ctrl-lbl{font-family:var(--font-mono);font-size:9px;color:var(--muted);letter-spacing:.05em}
-.ctrl-val{font-family:var(--font-mono);font-size:10px;color:var(--accent)}
+.ctrl-val{font-family:var(--font-mono);font-size:10px;color:var(--val)}
 input[type=range]{width:100%;-webkit-appearance:none;height:2px;border-radius:1px;background:var(--border);outline:none;cursor:pointer}
 input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:12px;height:12px;border-radius:50%;background:var(--accent);cursor:pointer}
 /* mode selector */
@@ -66,7 +67,7 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:12px;heigh
 .depth-ops.active{opacity:1;pointer-events:all}
 .ctrl.ml-inactive{opacity:0.3;pointer-events:none;transition:opacity .2s}
 .dop-lbl{font-family:var(--font-mono);font-size:9px;color:var(--muted);letter-spacing:.05em;white-space:nowrap}
-.dop-val{font-family:var(--font-mono);font-size:9px;color:var(--accent);min-width:18px;text-align:right}
+.dop-val{font-family:var(--font-mono);font-size:9px;color:var(--val);min-width:18px;text-align:right}
 .dop-btn{background:transparent;border:0.5px solid var(--border);color:var(--muted);font-family:var(--font-mono);font-size:9px;padding:3px 9px;border-radius:4px;cursor:pointer;transition:all .15s;white-space:nowrap;letter-spacing:.04em}
 .dop-btn:hover{border-color:var(--muted);color:var(--text)}
 .dop-btn.on{border-color:var(--accent);color:var(--accent)}
@@ -190,7 +191,7 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:12px;heigh
         </div>
         <div class="layer-body">
           <div class="ctrl">
-            <div class="ctrl-row"><span class="ctrl-lbl">attenuation curve</span><span class="ctrl-val" id="v-fara">0.4</span></div>
+            <div class="ctrl-row"><span class="ctrl-lbl">disparity falloff</span><span class="ctrl-val" id="v-fara">0.4</span></div>
             <input type="range" id="s-fara" min="0" max="1" value="0.4" step="0.05" oninput="slv(this,'fara','');schedRender()">
           </div>
           <div class="ctrl">
@@ -208,7 +209,7 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:12px;heigh
         </div>
         <div class="layer-body">
           <div class="ctrl">
-            <div class="ctrl-row"><span class="ctrl-lbl">emissive strength</span><span class="ctrl-val" id="v-esculpt">30%</span></div>
+            <div class="ctrl-row"><span class="ctrl-lbl">sculpt strength</span><span class="ctrl-val" id="v-esculpt">30%</span></div>
             <input type="range" id="s-esculpt" min="0" max="100" value="30" step="1" oninput="slv(this,'esculpt','%');schedRender()">
           </div>
           <div class="ctrl">
@@ -282,7 +283,7 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:12px;heigh
         <input type="range" id="s-dsharpen" min="0" max="100" value="0" step="1" style="width:50px;flex-shrink:0" oninput="document.getElementById('v-dsharpen').textContent=this.value" onchange="applyDepthProcessing()">
         <span class="dop-val" id="v-dsharpen">0</span>
         <div class="dop-sep"></div>
-        <span class="dop-lbl">luma det</span>
+        <span class="dop-lbl">luma detail</span>
         <input type="range" id="s-dlumadet" min="0" max="100" value="0" step="1" style="width:50px;flex-shrink:0" oninput="document.getElementById('v-dlumadet').textContent=this.value" onchange="applyDepthProcessing()">
         <span class="dop-val" id="v-dlumadet">0</span>
         <div class="dop-sep"></div>
