@@ -60,10 +60,10 @@ If the model fails to load (no internet, corporate firewall) the app falls back 
 | Red balance | Scales the red channel in linear space — reduce for warm/sunset images |
 
 ### Far-Field Recession
-Attenuates and hazes distant areas to reinforce depth perspective.
+Attenuates and hazes distant areas to reinforce depth perspective. The **disparity falloff** slider controls how steeply the effect rolls off with distance.
 
 ### Edge Sculpting
-Sobel edge detection with depth-weighted unsharp masking — boosts local colour contrast at object boundaries, with stronger enhancement toward the foreground. This reinforces depth separation rather than just adding a tint.
+Sobel edge detection with depth-weighted unsharp masking — boosts local colour contrast at object boundaries, with stronger enhancement toward the foreground. This reinforces depth separation rather than just adding a tint. **Sculpt strength** sets the intensity of the enhancement.
 
 ### Iridescence Noise
 Rainbow shimmer noise layer — optional creative effect.
@@ -78,7 +78,7 @@ These appear once the ML depth model has run.
 |---|---|
 | Smooth | Edge-aware bilateral filter on the depth map, guided by source image luminance — smooths depth across flat regions without bleeding across colour edges. Fires on release (values above 5 are noticeably slow) |
 | Sharpen | Unsharp mask applied to the depth map itself — sharpens depth edges without involving luminance, no false geometry risk |
-| Luma det | High-pass luminance injected into depth — recovers fine image detail (hair, bark, clothing folds) that the ML model smooths over. Fires on release |
+| Luma detail | High-pass luminance injected into depth — recovers fine image detail (hair, bark, clothing folds) that the ML model smooths over. Fires on release |
 | Lum blend | Real-time shader slider: blends between pure ML depth (100%) and raw luminance depth (0%). Best left near 100%; lower values add luminance as a direct depth signal, which can mislead on dark foreground / bright background scenes |
 | ⇅ Invert | Flips the depth map — enabled by default to match Depth Anything V2's output convention |
 
